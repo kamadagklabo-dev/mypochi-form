@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>売上申請フォーム | ぽちっと確定申告アシスト（β）</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: "M PLUS 1p", sans-serif;
+      background: #F4F7FB;
+      margin: 0;
+      padding: 1.5rem;
+      color: #333;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      color: #D78C84;
+      margin-bottom: 1.5rem;
+    }
+
+    .card {
+      background: #fff;
+      padding: 2rem 1.6rem;
+      border-radius: 18px;
+      max-width: 480px;
+      margin: 0 auto;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      margin-top: 1.2rem;
+      font-size: 1.15rem;
+      font-weight: 600;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 1rem;
+      font-size: 1.15rem;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      box-sizing: border-box;
+      margin-top: 0.5rem;
+    }
+
+    button {
+      width: 100%;
+      padding: 1.2rem;
+      margin-top: 1.8rem;
+      background: #D78C84;
+      color: white;
+      border: none;
+      font-size: 1.25rem;
+      border-radius: 50px;
+      font-weight: 600;
+    }
+
+    .back-btn {
+      background: #AFC4D1;
+      margin-top: 1rem;
+    }
+
+    #msg {
+      margin-top: 1rem;
+      font-weight: 700;
+      font-size: 1.15rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>売上を登録</h1>
+
+  <div class="card">
+
+    <label>日付</label>
+    <input type="date" id="date">
+
+    <label>顧客名（任意）</label>
+    <input type="text" id="client" placeholder="例：株式会社○○">
+
+    <label>売上区分</label>
+    <select id="category">
+      <option value="">読み込み中...</option>
+    </select>
+
+    <label>内容</label>
+    <textarea id="detail" rows="3" placeholder="例：10月分デザイン代行"></textarea>
+
+    <label>金額（円）</label>
+    <input type="number" id="amount">
+
+    <label>入金方法</label>
+    <select id="payment">
+      <option>振込</option>
+      <option>現金</option>
+      <option>クレジット</option>
+      <option>その他</option>
+    </select>
+
+    <label>入金ステータス</label>
+    <select id="status">
+      <option>未入金</option>
+      <option>入金済</option>
+    </select>
+
+    <button onclick="submitForm()">💾 登録する</button>
+    <button class="back-btn" onclick="location.href='index.html'">← トップページへ戻る</button>
+
+    <div id="msg"></div>
+  </div>
+
+<script>
+// 保存先スプレッドシートIDをロード
+const SHEET_ID = localStorage.getItem("MY_SHEET_ID");
+if (!SHEET_ID) alert("⚠ スプレッドシートの設定がまだされていません！");
+
+// ==== 固定売上カテゴリ ====
+function loadCategory() {
+  const categories = [
+    { name: "通常売上", desc: "通常のサービス売上" },
+    { name: "業務委託", desc: "請負・外注作業" },
+    { name: "雑収入", desc: "その他の小規模売上" },
+    { name: "非課税売上", desc: "補助金・助成金など" }
+  ];
+
+  const select = document.getElementById("category");
+  select.innerHTML = '<option value="">選択してください</option>';
+
+  categories.forEach(cat => {
+    const option = document.createElement("option");
+    option.value = cat.name;
+    option.textContent = `${cat.name}（${cat.desc}）`;
+    select.appendChild(option);
+  });
+}
+
+// ==== GAS の売上マスタ（任意カテゴリ） ====
+async function loadSalesCategories() {
+  const select = document.getElementById("category");
+
+  const data = { action: "getSalesItems" };  // ← GAS 名に合わせた！
+  const GAS_URL =
+  "https://script.google.com/macros/s/AKfycbx4iMDGDsEI-MaHghyqaVGXwuFY371j_LBVdPIoLsh67zbtokNwwIg7lLNNclQZq8ZW/exec";
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const json = await res.json();
+
+    if (json.status === "success") {
+      json.items.forEach(cat => {
+        const opt = document.createElement("option");
+        opt.value = cat;
+        opt.textContent = cat;
+        select.appendChild(opt);
+      });
+    }
+
+  } catch (err) {
+    console.log("GAS読込失敗", err);
+  }
+}
+
+// ==== 売上登録 ====
+async function submitForm() {
+  const msg = document.getElementById("msg");
+  msg.textContent = "⏳ 登録中…";
+  msg.style.color = "#C06C67";
+
+  const data = {
+    action: "saveSales",
+    sheetId: SHEET_ID,
+
+    date: document.getElementById("date").value,
+    client: document.getElementById("client").value,
+    category: document.getElementById("category").value,
+    detail: document.getElementById("detail").value,
+    amount: document.getElementById("amount").value,
+    payment: document.getElementById("payment").value,
+    status: document.getElementById("status").value
+  };
+
+  const GAS_URL =
+  "https://script.google.com/macros/s/AKfycbx4iMDGDsEI-MaHghyqaVGXwuFY371j_LBVdPIoLsh67zbtokNwwIg7lLNNclQZq8ZW/exec";
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const json = await res.json();
+
+    msg.textContent = json.message;
+    msg.style.color = json.status === "success" ? "#C06C67" : "#c33";
+
+    if (json.status === "success") {
+      document.getElementById("client").value = "";
+      document.getElementById("detail").value = "";
+      document.getElementById("amount").value = "";
+      document.getElementById("category").value = "";
+    }
+
+  } catch (err) {
+    msg.textContent = "❌ エラーが発生しました";
+    msg.style.color = "#c33";
+  }
+}
+
+// ==== 初期化（onload 1つに統合） ====
+window.onload = function () {
+  // 今日の日付セット
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  document.getElementById("date").value = `${yyyy}-${mm}-${dd}`;
+
+  // 固定カテゴリ
+  loadCategory();
+
+  // GAS マスタ（任意カテゴリ）
+  loadSalesCategories();
+};
+</script>
+
+</body>
+</html>
